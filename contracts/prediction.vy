@@ -142,8 +142,9 @@ MAX_TREASURY_FEE: public(constant(uint256)) = 1000
 
 
 # @dev Retujrns maximum minimun bet amount that
-# can be set in the protocol.
-MAX_MINIMUM_BET_AMOUNT: public(constant(uint256)) = 0.1 * 10 ** 18
+# can be set in the protocol. Here is set to
+# 0.1 of the chain's native currency or 0.1 * 10^18
+MAX_MINIMUM_BET_AMOUNT: public(constant(uint256)) = 100000000000000000
 
 
 # @dev Maps each epoch ID to a mapping of
@@ -184,7 +185,7 @@ event BetBear:
 # @dev Log when a user places a Bull bet.
 event BetBull:
     sender: indexed(address)
-    epoch: indexed(unit256)
+    epoch: indexed(uint256)
     amount: uint256
 
 
