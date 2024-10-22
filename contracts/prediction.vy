@@ -676,3 +676,90 @@ def claim(epochs: DynArray[uint256, 128]):
     
     if reward > 0:
         extcall _ASSET.transfer(msg.sender, reward)
+
+
+@nonreentrant
+@external
+def genesis_start_round():
+    """
+    @notice Start the genesis round.
+    @dev TODO: Callable only by the operator. It can only be run once to initialize
+         the first round of the protocol.
+    """
+    assert not self.genesis_start_once, "prediction: can only run genesis_start_round once"
+
+    self.current_epoch += 1
+    self._start_round(self.current_epoch)
+    self.genesis_start_once = True
+
+
+@nonreentrant
+@external
+def genesis_lock_round():
+    """
+    @notice Lock the gensis round.
+    @dev TODO: Callable only by the operator. Requires that the genesis start round has been
+         triggered and that the genesis lock round has not been executed yet. After locking, it
+         starts the next round and updates the state.
+    """
+    assert self.genesis_start_once, "prediction: can only run after genesis_start_round is triggered"
+    assert not self.genesis_lock_once, "prediction: can only run genesis_lock_round once"
+
+    current_round_id: uint80 = 0
+    current_price: int256 = 0
+    current_round_id, current_price = self._get_price_from_oracle()
+
+    oracle_latest_round_id: uint256 = convert(current_round_id, uint256)
+    self.oracle_latest_round_id = oracle_latest_round_id
+
+    current_epoch: uint256 = self.current_epoch
+    self._safe_lock_round(current_epoch, oracle_latest_round_id, current_price)
+    self.current_epoch += 1
+
+    self._start_round(current_epoch+1)
+    self.genesis_lock_once = True
+    
+
+@nonreentrant
+@external
+def execute_round():
+    """
+    @notice Start the next round (n), lock the price for round (n-1), and end round (n-2).
+    @dev TODO: Callable only by the operator. Requires that genesis_start_once and
+         genesis_lock_once have been triggered before this can be executed.
+    """
+    self._not_proxy_contract()
+    assert self.genesis_start_once and self.genesis_lock_once, "prediction: can only run after genesis_start_round and genesis_lock_round are triggered"
+
+    current_round_id: uint80 = 0
+    current_price: int256 = 0
+    current_round_id, current_price = self._get_price_from_oracle()
+
+    oracle_latest_round_id: uint256 = convert(current_round_id, uint256)
+    self.oracle_latest_round_id = oracle_latest_round_id
+
+    current_epoch: uint256 = self.current_epoch
+    self._safe_lock_round(current_epoch, oracle_latest_round_id, current_price)
+    self._safe_end_round(current_epoch-1, oracle_latest_round_id, current_price)
+
+    self._calculate_rewards(current_epoch-1)
+
+    self.current_epoch += 1
+    self._safe_start_round(current_epoch+1)
+    
+
+@nonreentrant
+@external
+def claim_treasury():
+    """
+    @notice Claim all rewards stored in the treasury.
+    @dev Callable by owner only. This function transfer all the treasury funds to the admin
+         address and resets the treasury amount to zero.
+    """
+    ow._check_owner()
+
+    current_treasury_amount: uint256 = self.treasury_amount
+    self.treasury_amount = 0
+
+    extcall _ASSET.transfer(ow.owner, current_treasury_amount)
+    log TreasuryClaim(current_treasury_amount)
