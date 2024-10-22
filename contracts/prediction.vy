@@ -1,7 +1,7 @@
  # pragma version ~=0.4.0
 """
-@title `prediction` Prediction Market Game 
-@custom:contract-name prediction
+@title `prediction-v1` binary prediction market 
+@custom:contract-name prediction-v1
 @license GNU Affero General Public License v3.0 only
 @author rabuawad
 """
@@ -32,29 +32,30 @@ exports: ow.__interface__
 
 
 # @dev Enum representing the position of a bet,
-# either Bull (Up) or Bear (Down)
+# either BULL (Up) or BEAR (Down)
 flag Position:
-    Bull
-    Bear
+    BULL
+    BEAR
 
 
 # @dev Stores the Round data used for tracking
 # each prediction round in the protocol
 struct Round:
     epoch: uint256
-    startTimestamp: uint256
-    lockTimestamp: uint256
-    closeTimestamp: uint256
-    lockPrice: int256
-    closePrice: int256
-    lockOracleId: uint256
-    closeOracleId: uint256
-    totalAmount: uint256
-    bullAmount: uint256
-    bearAmount: uint256
-    rewardBaseCalAmount: uint256
-    rewardAmount: uint256
-    oracleCalled: bool
+    start_timestamp: uint256
+    lock_timestamp: uint256
+    close_timestamp: uint256
+    lock_price: int256
+    close_price: int256
+    lock_oracle_round_id: uint256
+    close_oracle_round_id: uint256
+    total_amount: uint256
+    bull_amount: uint256
+    bear_amount: uint256
+    reward_base_cal_amount: uint256
+    reward_amount: uint256
+    oracle_called: bool
+
 
 
 # @dev Stores information about each bet,
@@ -67,12 +68,12 @@ struct BetInfo:
 
 # @dev Tracks whether the genesis lock round has been triggered. This ensures
 # that the price lock for the first round (genesis) is only done once.
-genesisLockOnce: public(bool)
+genesis_lock_once: public(bool)
 
 
 # @dev Tracks whether the gesis start round has been triggered. This ensures
 # that the first round (genesis) starts only once and avoids multiple initializations.
-genesisStartOnce: public(bool)
+genesis_start_once: public(bool)
 
 
 # @dev Stores the address of the underlying toke (asset)
@@ -97,42 +98,42 @@ _ORACLE: immutable(IAggregatorV3)
 
 # @dev Returns the numbers of seconds for a valid
 # execution of a prediction round.
-bufferSeconds: public(uint256)
+buffer_seconds: public(uint256)
 
 
 # @dev Returns the number of interval seconds between
 # two prediction rounds.
-intervalSeconds: public(uint256)
+interval_seconds: public(uint256)
 
 
 # @dev Returns the minimum betting amount, denominated
 # in wei.
-minBetAmount: public(uint256)
+min_bet_amount: public(uint256)
 
 
 # @dev Returns the fee taken by the protocol on
 # each prediction round.
-treasuryFee: public(uint256)
+treasury_fee: public(uint256)
 
 
 # @dev Returns the amount stored in the protocol
 # that has not been claimed yet.
-treasuryAmount: public(uint256)
+treasury_amount: public(uint256)
 
 
 # @dev Returns the current epoch for the ongoing
 # prediction round.
-currentEpoch: public(uint256)
+current_epoch: public(uint256)
 
 
 # @dev Returns the latests Round ID from
 # the Chainlink Data Feed (converted from uint80)
-oracleLatestRoundId: public(uint256)
+oracle_latest_round_id: public(uint256)
 
 
 # @dev Returns the interval of seconds
 # between each oracle allowance
-oracleUpdateAllowance: public(uint256)
+oracle_update_allowance: public(uint256)
 
 
 # @dev Returns the maximum fee that can be
@@ -148,7 +149,7 @@ MAX_MINIMUM_BET_AMOUNT: public(constant(uint256)) = 100000000000000000
 
 
 # @dev Maps each epoch ID to a mapping of
-# user addresses to their BetInfo.
+# user addresses to their Bet information (BetInfo).
 ledger: public(HashMap[uint256, HashMap[address, BetInfo]])
 
 
@@ -159,7 +160,7 @@ rounds: public(HashMap[uint256, Round])
 
 # @dev Maps each user's address to a unique ID used
 # to keep track of the user rounds.
-_userRounds: HashMap[address, uint256]
+_user_rounds: HashMap[address, uint256]
 
 
 # @dev Maps each user's address to an array of epochs
@@ -168,7 +169,7 @@ _userRounds: HashMap[address, uint256]
 #
 # Structure:
 # Address => Index => Round ID 
-userRounds: public(HashMap[address, HashMap[uint256, uint256]])
+user_rounds: public(HashMap[address, HashMap[uint256, uint256]])
 
 
 # @dev Returns the limit of ujser rounds that can be queried.
@@ -199,51 +200,51 @@ event Claim:
 # @dev Log when a round ends.
 event EndRound:
     epoch: indexed(uint256)
-    roundId: indexed(uint256)
+    round_id: indexed(uint256)
     price: int256
 
 
 # @dev Log when a round is locked.
 event LockRound:
     epoch: indexed(uint256)
-    roundId: indexed(uint256)
+    round_id: indexed(uint256)
     price: int256
 
 
 # @dev Log when the buffer and interval
 # in seconds are updated.
 event NewBufferAndIntervalInSeconds:
-    bufferSeconds: uint256
-    intervalSeconds: uint256
+    buffer_seconds: uint256
+    interval_seconds: uint256
 
 
 # @dev Log when a new minimum bet amount is set
 # for the protocol.
 event NewMinBetAmount:
     epoch: indexed(uint256)
-    minBetAmount: uint256
+    min_bet_amount: uint256
 
 
 # @dev Log when a new treasury fee is set
 # for the protocol.
-event NewTreasuryFee:
+event Newtreasury_fee:
     epoch: indexed(uint256)
-    treasuryFee: uint256
+    treasury_fee: uint256
 
 
 # @dev Log when a new Chainlink Data Feed update
 # allowance is set.
-event NewOracleUpdateAllowance:
-    oracleUpdateAllowance: uint256
+event Neworacle_update_allowance:
+    oracle_update_allowance: uint256
 
 
 # @dev Log when rewards are calculated for a specific
 # epoch.
 event RewardsCalculated:
     epoch: indexed(uint256)
-    rewardBaseCalAmount: uint256
-    rewardAmount: uint256
-    treasuryAmount: uint256
+    reward_base_cal_amount: uint256
+    reward_amount: uint256
+    treasury_amount: uint256
 
 
 # @dev Log when round starts.
@@ -267,11 +268,11 @@ event TreasuryClaim:
 def __init__(
     _asset: IERC20,
     _oracle: IAggregatorV3,
-    _intervalSeconds: uint256,
-    _bufferSeconds: uint256,
-    _minBetAmount: uint256,
-    _oracleUpdateAllowance: uint256,
-    _treasuryFee: uint256
+    _interval_seconds: uint256,
+    _buffer_seconds: uint256,
+    _min_bet_amount: uint256,
+    _oracle_update_allowance: uint256,
+    _treasury_fee: uint256
 ):
     """
     @dev To omit the opcodes for checking the `msg.value`
@@ -281,25 +282,25 @@ def __init__(
            underlying asset contract.
     @param _oracle The address of the Chainlink Data Feed oracle conotract
            used to provide price feed data for the protocol.
-    @param _intervalSeconds The interval (in seconds) at which the price
+    @param _interval_seconds The interval (in seconds) at which the price
            updates occur,determinig how often the contract fetched new
            price information from the oracle.
-    @param _bufferSeconds The buffer time (in seconds) that must elapse
+    @param _buffer_seconds The buffer time (in seconds) that must elapse
            before a new position round can start, ensuring smooth transtions
            between rounds.
-    @param _minBetAmount The minimum amount of currency that users can wager
+    @param _min_bet_amount The minimum amount of currency that users can wager
            when placing a bet, designed to ensure that bets are of a meaninful
            size.
-    @param _oracleUpdateAllowance The allowance period (in seconds) within the
+    @param _oracle_update_allowance The allowance period (in seconds) within the
            oracle is expected to update the price feed data, helping to maintain
            timely information.
-    @param _treasuryFee The fee collected for the treasury, which can be
+    @param _treasury_fee The fee collected for the treasury, which can be
            used for various operational costs or for funding other aspects
            of the protocol.
     @notice The `owner` role will be assigned to
             the `msg.sender`.
     """
-    assert _treasuryFee <= MAX_TREASURY_FEE, "prediction: treasury fee to high"
+    assert _treasury_fee <= MAX_TREASURY_FEE, "prediction: treasury fee to high"
 
     _ASSET = _asset
     asset = _ASSET.address
@@ -307,11 +308,11 @@ def __init__(
     _ORACLE = _oracle
     oracle = _ORACLE.address
 
-    self.intervalSeconds = _intervalSeconds
-    self.bufferSeconds = _bufferSeconds
-    self.minBetAmount = _minBetAmount
-    self.oracleUpdateAllowance = _oracleUpdateAllowance
-    self.treasuryFee = _treasuryFee
+    self.interval_seconds = _interval_seconds
+    self.buffer_seconds = _buffer_seconds
+    self.min_bet_amount = _min_bet_amount
+    self.oracle_update_allowance = _oracle_update_allowance
+    self.treasury_fee = _treasury_fee
 
     # The following line assigns the `owner`
     # to the `msg.sender`.
@@ -343,12 +344,12 @@ def _bettable(epoch: uint256) -> bool:
     """
     r: Round = self.rounds[epoch]
     return (
-        r.startTimestamp != 0 and
-        r.lockTimestamp != 0 and
-        block.timestamp > r.startTimestamp and
-        block.timestamp < r.lockTimestamp
+        r.start_timestamp != 0
+        and r.lock_timestamp != 0
+        and block.timestamp > r.start_timestamp
+        and block.timestamp < r.lock_timestamp
     )
-    
+
 
 @view
 @internal
@@ -359,23 +360,24 @@ def _claimable(epoch: uint256, user: address) -> bool:
     @param user The user's address.
     @return bool True if the user is eligible to claim, False otherwise.
     @notice The claimable status is determined by:
-        - The oracle has provided final data (Round.oracleCalled is set to True).
+        - The oracle has provided final data (Round.oracle_called is set to True).
         - The user has place a bet (amount is non-zero).
         - The user has not already claimed the wards.
         - The result of the round (whether the user's position won or lost)
     """
-    betInfo: BetInfo = self.ledger[epoch][user]
+    bet_info: BetInfo = self.ledger[epoch][user]
     r: Round = self.rounds[epoch]
 
     return (
-        r.oracleCalled and
-        betInfo.amount > 0 and
-        not betInfo.claimed and (
-            (r.closePrice > r.lockPrice and betInfo.position == Position.Bull) or
-            (r.closePrice < r.lockPrice and betInfo.position == Position.Bear)
+        r.oracle_called
+        and bet_info.amount > 0
+        and not bet_info.claimed
+        and (
+            (r.close_price > r.lock_price and bet_info.position == Position.BULL)
+            or (r.close_price < r.lock_price and bet_info.position == Position.BEAR)
         )
     )
-    
+
 
 @view
 @internal
@@ -386,19 +388,19 @@ def _refundable(epoch: uint256, user: address) -> bool:
     @param user The user's address.
     @return bool True if the user is eligible for a refund, False otherwise.
     @notice Refundable status is determined by:
-        - The oracle has not provided a final price data (Round.oracleCalled is False).
+        - The oracle has not provided a final price data (Round.oracle_called is False).
         - The user has placed a bet but not yet claimed the reward.
         - The current block timestamp is greater than the round's close timestamp plus a buffer.
         - The user has plapced a bet (amount is non-zero).
     """
-    betInfo: BetInfo = self.ledger[epoch][user]
+    bet_info: BetInfo = self.ledger[epoch][user]
     r: Round = self.rounds[epoch]
 
     return (
-        not r.oracleCalled and
-        not betInfo.claimed and
-        betInfo.amount != 0 and
-        block.timestamp < r.closeTimestamp + self.bufferSeconds
+        not r.oracle_called and
+        not bet_info.claimed and
+        bet_info.amount != 0 and
+        block.timestamp < r.close_timestamp + self.buffer_seconds
     )
 
 
@@ -410,68 +412,68 @@ def _get_price_from_oracle() -> (uint80, int256):
     @dev Ensures the oracle has updated within the allowed time buffer and
          checks the oracle's round ID is valid (greater that the latest stored
          round ID).
-    @return roundId The round ID from the oracle.
+    @return round_id The round ID from the oracle.
     @return price The latests price from the oracle.
     """
-    least_allowed_timestamp: uint256 = block.timestamp + self.oracleUpdateAllowance
+    least_allowed_timestamp: uint256 = block.timestamp + self.oracle_update_allowance
 
-    roundId: uint80 = 0
+    round_id: uint80 = 0
     answer: int256 = 0
-    startedAt: uint256 = 0
-    updatedAt: uint256 = 0
-    answeredInRound: uint80 = 0
-    (roundId, answer, startedAt, updatedAt, answeredInRound) = staticcall _ORACLE.latestRoundData()
+    started_at: uint256 = 0
+    updated_at: uint256 = 0
+    answered_in_round: uint80 = 0
+    (round_id, answer, started_at, updated_at, answered_in_round) = staticcall _ORACLE.latestRoundData()
 
     assert block.timestamp <= least_allowed_timestamp, "prediction: oracle update exceeded max timestamp allowance"
-    assert convert(roundId, uint256) > self.oracleLatestRoundId, "prediction: oracle update roundId must be larger than oracleLatestRoundId"
+    assert convert(round_id, uint256) > self.oracle_latest_round_id, "prediction: oracle update round_id must be larger than oracleLatestround_id"
 
-    return roundId, answer
+    return round_id, answer
 
 
 @internal
-def _safe_end_round(epoch: uint256, roundId: uint256, price: int256):
+def _safe_end_round(epoch: uint256, round_id: uint256, price: int256):
     """
     @notice End a specific round by locking in the closing price and oracle round ID.
-    @dev This function ensures the round is locked and can only be ended after the closeTimestamp,
-         but within the bufferSeconds.
+    @dev This function ensures the round is locked and can only be ended after the close_timestamp,
+         but within the buffer_seconds.
     @param epoch The round (epoch) to be ended
-    @param roundId the oracle's round ID for this round. Chainlink Data Feeds return a round 
+    @param round_id the oracle's round ID for this round. Chainlink Data Feeds return a round 
            ID that needs to be stored in the Round struct.
     @param price The closing price for this round.
     """
     r: Round = self.rounds[epoch]
 
-    assert r.lockTimestamp != 0, "prediction: can only end round after round has locked"
-    assert block.timestamp >= r.closeTimestamp, "prediction: can only end round after closeTimestamp"
-    assert block.timestamp <= r.closeTimestamp + self.bufferSeconds, "prediction: can only end round within bufferSeconds"
+    assert r.lock_timestamp != 0, "prediction: can only end round after round has locked"
+    assert block.timestamp >= r.close_timestamp, "prediction: can only end round after close_timestamp"
+    assert block.timestamp <= r.close_timestamp + self.buffer_seconds, "prediction: can only end round within buffer_seconds"
 
-    self.rounds[epoch].closePrice = price
-    self.rounds[epoch].closeOracleId = roundId
-    self.rounds[epoch].oracleCalled = True
-    log EndRound(epoch, roundId, price)
+    self.rounds[epoch].close_price = price
+    self.rounds[epoch].close_oracle_round_id = round_id
+    self.rounds[epoch].oracle_called = True
+    log EndRound(epoch, round_id, price)
 
 
 @internal
-def _safe_lock_round(epoch: uint256, roundId: uint256, price: int256):
+def _safe_lock_round(epoch: uint256, round_id: uint256, price: int256):
     """
     @notice Lock a specific round by setting the lock price and oracle round ID.
     @dev This function ensures that the round has started and can only be locked after
-         the lockTimestamp, but within bufferSeconds.
+         the lock_timestamp, but within buffer_seconds.
     @param epoch The round (epoch) to be locked.
-    @param roundId the oracle's round ID for this round. Chainlink Data Feeds return a round 
+    @param round_id the oracle's round ID for this round. Chainlink Data Feeds return a round 
            ID that needs to be stored in the Round struct.
     @param price The locking price for this round.
     """
     r: Round = self.rounds[epoch]
 
-    assert r.startTimestamp != 0, "prediction: can only lock round after round has started"
-    assert block.timestamp >= r.lockTimestamp, "prediction: can only lock round after lockTimestamp"
-    assert block.timestamp <= r.lockTimestamp + self.bufferSeconds, "prediction: can only round within bufferSeonds"
+    assert r.start_timestamp != 0, "prediction: can only lock round after round has started"
+    assert block.timestamp >= r.lock_timestamp, "prediction: can only lock round after lock_timestamp"
+    assert block.timestamp <= r.lock_timestamp + self.buffer_seconds, "prediction: can only round within bufferSeonds"
 
-    self.rounds[epoch].closeTimestamp = block.timestamp + self.intervalSeconds
-    self.rounds[epoch].lockPrice = price
-    self.rounds[epoch].lockOracleId = roundId
-    log LockRound(epoch, roundId, price)
+    self.rounds[epoch].close_timestamp = block.timestamp + self.interval_seconds
+    self.rounds[epoch].lock_price = price
+    self.rounds[epoch].lock_oracle_round_id = round_id
+    log LockRound(epoch, round_id, price)
 
 
 @internal
@@ -481,13 +483,13 @@ def _start_round(epoch: uint256):
     @dev This function sets the start, lock, and close timestamps for the round and resets the total amount.
     @param epoch The round (epoch) to be started.
     """
-    intervalSeconds: uint256 = self.intervalSeconds
+    interval_seconds: uint256 = self.interval_seconds
 
-    self.rounds[epoch].startTimestamp = block.timestamp
-    self.rounds[epoch].lockTimestamp = block.timestamp + intervalSeconds
-    self.rounds[epoch].closeTimestamp = block.timestamp + (2 * intervalSeconds)
+    self.rounds[epoch].start_timestamp = block.timestamp
+    self.rounds[epoch].lock_timestamp = block.timestamp + interval_seconds
+    self.rounds[epoch].close_timestamp = block.timestamp + (2 * interval_seconds)
     self.rounds[epoch].epoch = epoch
-    self.rounds[epoch].totalAmount = 0
+    self.rounds[epoch].total_amount = 0
     log StartRound(epoch)
 
 
@@ -501,9 +503,9 @@ def _safe_start_round(epoch: uint256):
     """
     r: Round = self.rounds[epoch - 2]
 
-    assert self.genesisStartOnce, "prediction: can only run after genesisStartRound is triggered"
-    assert r.closeTimestamp != 0, "prediction: can only start a new round after the round n-2 has ended"
-    assert block.timestamp >= r.closeTimestamp, "prediction: can only start a new round after round n-2 closeTimestamp"
+    assert self.genesis_start_once, "prediction: can only run after genesisStartRound is triggered"
+    assert r.close_timestamp != 0, "prediction: can only start a new round after the round n-2 has ended"
+    assert block.timestamp >= r.close_timestamp, "prediction: can only start a new round after round n-2 close_timestamp"
 
     self._start_round(epoch)
 
@@ -517,32 +519,56 @@ def _calculate_rewards(epoch: uint256):
     @param The round (epoch) for which rewards are being calculated.
     """
     r: Round = self.rounds[epoch]
-    assert r.rewardBaseCalAmount == 0 and r.rewardAmount == 0, "prediction: rewards already calculated"
+    assert r.reward_base_cal_amount == 0 and r.reward_amount == 0, "prediction: rewards already calculated"
 
     reward_base_cal_amount: uint256 = 0
     treasury_amount: uint256 = 0
     reward_amount: uint256 = 0
 
     # Bull wins (close price is greater than the lock price)
-    if r.closePrice > r.lockPrice:
-        reward_base_cal_amount = r.bullAmount
-        treasury_amount = (r.totalAmount * self.treasuryFee) // 10000
-        reward_amount = r.totalAmount - treasury_amount
+    if r.close_price > r.lock_price:
+        reward_base_cal_amount = r.bull_amount
+        treasury_amount = (r.total_amount * self.treasury_fee) // 10000
+        reward_amount = r.total_amount - treasury_amount
     
     # Bear wins (close price is less than the lock price)
-    elif r.closePrice < r.lockPrice:
-        reward_base_cal_amount = r.bearAmount
-        treasury_amount = (r.totalAmount * self.treasuryFee) // 10000
-        reward_amount = r.totalAmount - treasury_amount
+    elif r.close_price < r.lock_price:
+        reward_base_cal_amount = r.bear_amount
+        treasury_amount = (r.total_amount * self.treasury_fee) // 10000
+        reward_amount = r.total_amount - treasury_amount
     
     # House wins (close price equals the lock price)
     else:
         reward_base_cal_amount = 0
-        treasury_amount = r.totalAmount
+        treasury_amount = r.total_amount
         reward_amount = 0
     
-    self.rounds[epoch].rewardBaseCalAmount = reward_base_cal_amount
-    self.rounds[epoch].rewardAmount = reward_amount
+    self.rounds[epoch].reward_base_cal_amount = reward_base_cal_amount
+    self.rounds[epoch].reward_amount = reward_amount
     
-    self.treasuryAmount += treasury_amount
+    self.treasury_amount += treasury_amount
     log RewardsCalculated(epoch, reward_base_cal_amount, reward_amount, treasury_amount)
+
+
+@external
+@view
+def claimable(epoch: uint256, user: address) -> bool:
+    """
+    @notice Checks if the user can claim rewards for specific epoch.
+    @param epoch The round (epoch) to check.
+    @param user The user's address.
+    @return bool True if the user is eligible to claim, False otherwise.
+    """
+    return self._claimable(epoch, user)
+
+
+@view
+@external
+def refundable(epoch: uint256, user: address) -> bool:
+    """
+    @notice Determines whether the user is eligible for a refund in a specific round (epoch).
+    @param epoch The round (epoch) to check.
+    @param user The user's address.
+    @return bool True if the user is eligible for a refund, False otherwise.
+    """
+    return self._refundable(epoch, user)
