@@ -337,7 +337,7 @@ def _bettable(epoch: uint256) -> bool:
             is in a bettable state.
     @param epoch The epoch (round) to check.
     @return bool True if the round is bettable, False otherwise.
-    @notice A round is considered bettable if:
+    @dev A round is considered bettable if:
         - It has a valid start timestamp (non-zero).
         - It has a valid lock timestamp (non-zero).
         - The current block timestamp is between the start and lock timestamps.
@@ -359,7 +359,7 @@ def _claimable(epoch: uint256, user: address) -> bool:
     @param epoch The round (epoch) to check.
     @param user The user's address.
     @return bool True if the user is eligible to claim, False otherwise.
-    @notice The claimable status is determined by:
+    @dev The claimable status is determined by:
         - The oracle has provided final data (Round.oracle_called is set to True).
         - The user has place a bet (amount is non-zero).
         - The user has not already claimed the wards.
@@ -387,7 +387,7 @@ def _refundable(epoch: uint256, user: address) -> bool:
     @param epoch The round (epoch) to check.
     @param user The user's address.
     @return bool True if the user is eligible for a refund, False otherwise.
-    @notice Refundable status is determined by:
+    @dev Refundable status is determined by:
         - The oracle has not provided a final price data (Round.oracle_called is False).
         - The user has placed a bet but not yet claimed the reward.
         - The current block timestamp is greater than the round's close timestamp plus a buffer.
@@ -468,7 +468,7 @@ def _safe_lock_round(epoch: uint256, round_id: uint256, price: int256):
 
     assert r.start_timestamp != 0, "prediction: can only lock round after round has started"
     assert block.timestamp >= r.lock_timestamp, "prediction: can only lock round after lock_timestamp"
-    assert block.timestamp <= r.lock_timestamp + self.buffer_seconds, "prediction: can only round within bufferSeonds"
+    assert block.timestamp <= r.lock_timestamp + self.buffer_seconds, "prediction: can only lock round within bufferSeonds"
 
     self.rounds[epoch].close_timestamp = block.timestamp + self.interval_seconds
     self.rounds[epoch].lock_price = price
@@ -572,3 +572,107 @@ def refundable(epoch: uint256, user: address) -> bool:
     @return bool True if the user is eligible for a refund, False otherwise.
     """
     return self._refundable(epoch, user)
+
+@nonreentrant
+@external
+def bet_bear(epoch: uint256, amount: uint256):
+    """
+    @notice Allows a user to place a bet on the bear position for a specific round.
+    @param epoch The round (epoch) in which the bet is placed.
+    @param amount The amount beign wagered.
+    @dev
+        - The epoch must match the current epoch.
+        - The round must be bettable.
+        - The bet amount must be greater than the minimum bet amount.
+        - The user can only bet once per round.
+    """
+    self._not_proxy_contract()
+
+    assert epoch == self.current_epoch, "prediction: bet is too early/late"
+    assert self._bettable(epoch), "prediction: round is not bettable"
+    assert amount >= self.min_bet_amount, "prediction: bet amount must be greater than min_bet_amount"
+    assert self.ledger[epoch][msg.sender].amount == 0, "prediction: can only bet once per round"
+
+    extcall _ASSET.transferFrom(msg.sender, self, amount)
+
+    self.rounds[epoch].total_amount += amount
+    self.rounds[epoch].bear_amount += amount
+
+    self.ledger[epoch][msg.sender].position = Position.BEAR
+    self.ledger[epoch][msg.sender].amount = amount
+
+    # Get the Round ID for that corresponding user
+    i: uint256 = self._user_rounds[msg.sender]
+    self._user_rounds[msg.sender] += 1
+    self.user_rounds[msg.sender][i] = epoch
+
+    log BetBear(msg.sender, epoch, amount)
+
+
+@nonreentrant
+@external
+def bet_bull(epoch: uint256, amount: uint256):
+    """
+    @dev Allows a user to place a bet on the bear position for a specific epoch.
+    @param epoch The round (epoch) in which the bet is placed.
+    @param amount The amount beign wagered.
+    @dev
+        - The epoch must match the current epoch.
+        - The round must be bettable.
+        - The bet amount must be greater than the minimum bet amount.
+        - The user can only bet once per round.
+    """
+    self._not_proxy_contract()
+
+    assert epoch == self.current_epoch, "prediction: bet is too early/late"
+    assert self._bettable(epoch), "prediction: round not bettable"
+    assert amount >= self.min_bet_amount, "prediction: bet amount must be greater than min_bet_amount"
+    assert self.ledger[epoch][msg.sender].amount == 0, "prediction: can only bet once per round"
+
+    extcall _ASSET.transferFrom(msg.sender, self, amount)
+
+    self.rounds[epoch].total_amount += amount
+    self.rounds[epoch].bear_amount += amount
+
+    self.ledger[epoch][msg.sender].position = Position.BULL
+    self.ledger[epoch][msg.sender].amount = amount
+
+    # Get the Round ID for that corresponding user
+    i: uint256 = self._user_rounds[msg.sender]
+    self._user_rounds[msg.sender] += 1
+    self.user_rounds[msg.sender][i] = epoch
+
+    log BetBull(msg.sender, epoch, amount)
+
+
+@nonreentrant
+@external
+def claim(epochs: DynArray[uint256, 128]):
+    """
+    @notice Claims rewards for an array of epochs (rounds).
+    @param epochs And array of epochs (round ids).
+    """
+    self._not_proxy_contract()
+    
+    reward: uint256 = 0
+    for epoch: uint256 in epochs:
+        r: Round = self.rounds[epoch]
+
+        assert r.start_timestamp != 0, "prediction: round has not started"
+        assert r.close_timestamp < block.timestamp, "prediction: round has not ended"
+
+        added_rewards: uint256 = 0
+        if r.oracle_called:
+            assert self._claimable(epoch, msg.sender), "prediction: not eligible for claim"
+            added_rewards = (self.ledger[epoch][msg.sender].amount * r.reward_amount) // r.reward_base_cal_amount
+        else:
+            assert self._refundable(epoch, msg.sender), "prediction: not eligible for refund"
+            added_rewards = (self.ledger[epoch][msg.sender].amount * r.reward_amount) // r.reward_base_cal_amount
+        
+        self.ledger[epoch][msg.sender].claimed = True
+        reward += added_rewards
+
+        log Claim(msg.sender, epoch, added_rewards)
+    
+    if reward > 0:
+        extcall _ASSET.transfer(msg.sender, reward)
