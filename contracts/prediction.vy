@@ -141,6 +141,11 @@ oracleUpdateAllowance: public(uint256)
 MAX_TREASURY_FEE: public(constant(uint256)) = 1000
 
 
+# @dev Retujrns maximum minimun bet amount that
+# can be set in the protocol.
+MAX_MINIMUM_BET_AMOUNT: public(constant(uint256)) = 0.1 * 10 ** 18
+
+
 # @dev Maps each epoch ID to a mapping of
 # user addresses to their BetInfo.
 ledger: public(HashMap[uint256, HashMap[address, BetInfo]])
@@ -167,6 +172,93 @@ userRounds: public(HashMap[address, HashMap[uint256, uint256]])
 
 # @dev Returns the limit of ujser rounds that can be queried.
 USER_ROUNDS_BOUND: constant(uint256) = max_value(uint256)
+
+
+# @dev Log when a user places a Bear bet.
+event BetBear:
+    sender: indexed(address)
+    epoch: indexed(uint256)
+    amount: uint256
+
+
+# @dev Log when a user places a Bull bet.
+event BetBull:
+    sender: indexed(address)
+    epoch: indexed(unit256)
+    amount: uint256
+
+
+# @dev Log when a user claims their winnings.
+event Claim:
+    sender: indexed(address)
+    epoch: indexed(uint256)
+    amount: uint256
+
+
+# @dev Log when a round ends.
+event EndRound:
+    epoch: indexed(uint256)
+    roundId: indexed(uint256)
+    price: int256
+
+
+# @dev Log when a round is locked.
+event LockRound:
+    epoch: indexed(uint256)
+    roundId: indexed(uint256)
+    price: int256
+
+
+# @dev Log when the buffer and interval
+# in seconds are updated.
+event NewBufferAndIntervalInSeconds:
+    bufferSeconds: uint256
+    intervalSeconds: uint256
+
+
+# @dev Log when a new minimum bet amount is set
+# for the protocol.
+event NewMinBetAmount:
+    epoch: indexed(uint256)
+    minBetAmount: uint256
+
+
+# @dev Log when a new treasury fee is set
+# for the protocol.
+event NewTreasuryFee:
+    epoch: indexed(uint256)
+    treasuryFee: uint256
+
+
+# @dev Log when a new Chainlink Data Feed update
+# allowance is set.
+event NewOracleUpdateAllowance:
+    oracleUpdateAllowance: uint256
+
+
+# @dev Log when rewards are calculated for a specific
+# epoch.
+event RewardsCalculated:
+    epoch: indexed(uint256)
+    rewardBaseCalAmount: uint256
+    rewardAmount: uint256
+    treasuryAmount: uint256
+
+
+# @dev Log when round starts.
+event StartRound:
+    epoch: indexed(uint256)
+
+
+# @dev Log when tokens are recovered from the contract.
+event TokenRecovery:
+    token: indexed(address)
+    amount: uint256
+
+
+# @dev Log when the treasury claims its funds.
+event TreasuryClaim:
+    amount: uint256
 
 
 @deploy
