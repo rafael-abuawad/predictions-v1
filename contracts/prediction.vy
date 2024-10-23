@@ -57,13 +57,20 @@ struct Round:
     oracle_called: bool
 
 
-
 # @dev Stores information about each bet,
 # including position, amount and claimed status
 struct BetInfo:
     position: Position
     amount: uint256
     claimed: bool
+
+
+# @dev Returns the address of the operator.
+operator: public(address)
+
+
+# @dev Returns if the contract is paused, or not.
+paused: public(bool)
 
 
 # @dev Tracks whether the genesis lock round has been triggered. This ensures
@@ -227,14 +234,14 @@ event NewMinBetAmount:
 
 # @dev Log when a new treasury fee is set
 # for the protocol.
-event Newtreasury_fee:
+event NewTreasuryFee:
     epoch: indexed(uint256)
     treasury_fee: uint256
 
 
 # @dev Log when a new Chainlink Data Feed update
 # allowance is set.
-event Neworacle_update_allowance:
+event NewOracleUpdateAllowance:
     oracle_update_allowance: uint256
 
 
@@ -261,6 +268,21 @@ event TokenRecovery:
 # @dev Log when the treasury claims its funds.
 event TreasuryClaim:
     amount: uint256
+
+
+# @dev Log when the contract is paused for a specific epoch
+event Pause:
+    epoch: indexed(uint256)
+
+
+# @dev Log when the contract is unpaused for a specific epoch
+event Unpause:
+    epoch: indexed(uint256)
+
+
+# @dev Log when a new operator address is set
+event NewOperatorAddress:
+    operator: address
 
 
 @deploy
@@ -328,6 +350,33 @@ def _not_proxy_contract():
     """
     assert msg.sender == tx.origin, "predictions: proxy contract is not allowed"
 
+
+@internal
+@view
+def _only_operator():
+    """
+    @dev Internal function to ensure the method is called only by the operator.
+    """
+    assert msg.sender == self.operator, "prediction: caller is not operator"
+
+
+@internal
+@view
+def _when_not_paused():
+    """
+    @dev Internal function to ensure the protocol is not paused.
+    """
+    assert not self.paused, "prediction: protocol is paused"
+
+
+@internal
+@view
+def _when_paused():
+    """
+    @dev Internal function to ensure the protocol is paused.
+    """
+    assert self.paused, "prediction: protocol is not paused"
+ 
 
 @view
 @internal
@@ -573,6 +622,39 @@ def refundable(epoch: uint256, user: address) -> bool:
     """
     return self._refundable(epoch, user)
 
+
+@nonreentrant
+@external
+def pause():
+    """
+    @notice Pauses the protocol, triggering a stop state.
+    @dev Callable by owner only. Once paused the contracts enters a stopped state
+         and cannot be interacted with for certain functions until unpaused.
+    """
+    ow._check_owner()
+    assert not self.paused, "prediction: contract is already paused"
+
+    self.paused = True
+    log Pause(self.current_epoch)
+
+
+@nonreentrant
+@external
+def unpause():
+    """
+    @notice Unpauses the contract and returns to normal operation.
+    @dev Callable by owner only. This function resets the genesis state, and once unpaused,
+         the rounds need to be restarted by triggering the genesis start.
+    """
+    ow._check_owner()
+    assert self.paused, "prediction: contract is not paused"
+
+    self.genesis_start_once = False
+    self.genesis_lock_once = False
+    self.paused = False
+    log Unpause(self.current_epoch)
+    
+
 @nonreentrant
 @external
 def bet_bear(epoch: uint256, amount: uint256):
@@ -587,6 +669,7 @@ def bet_bear(epoch: uint256, amount: uint256):
         - The user can only bet once per round.
     """
     self._not_proxy_contract()
+    self._when_not_paused()
 
     assert epoch == self.current_epoch, "prediction: bet is too early/late"
     assert self._bettable(epoch), "prediction: round is not bettable"
@@ -623,6 +706,7 @@ def bet_bull(epoch: uint256, amount: uint256):
         - The user can only bet once per round.
     """
     self._not_proxy_contract()
+    self._when_not_paused()
 
     assert epoch == self.current_epoch, "prediction: bet is too early/late"
     assert self._bettable(epoch), "prediction: round not bettable"
@@ -653,6 +737,7 @@ def claim(epochs: DynArray[uint256, 128]):
     @param epochs And array of epochs (round ids).
     """
     self._not_proxy_contract()
+    self._when_not_paused()
     
     reward: uint256 = 0
     for epoch: uint256 in epochs:
@@ -683,9 +768,12 @@ def claim(epochs: DynArray[uint256, 128]):
 def genesis_start_round():
     """
     @notice Start the genesis round.
-    @dev TODO: Callable only by the operator. It can only be run once to initialize
+    @dev Callable only by the operator. It can only be run once to initialize
          the first round of the protocol.
     """
+    self._only_operator()
+    self._when_not_paused()
+
     assert not self.genesis_start_once, "prediction: can only run genesis_start_round once"
 
     self.current_epoch += 1
@@ -698,10 +786,13 @@ def genesis_start_round():
 def genesis_lock_round():
     """
     @notice Lock the gensis round.
-    @dev TODO: Callable only by the operator. Requires that the genesis start round has been
+    @dev Callable only by the operator. Requires that the genesis start round has been
          triggered and that the genesis lock round has not been executed yet. After locking, it
          starts the next round and updates the state.
     """
+    self._only_operator()
+    self._when_not_paused()
+
     assert self.genesis_start_once, "prediction: can only run after genesis_start_round is triggered"
     assert not self.genesis_lock_once, "prediction: can only run genesis_lock_round once"
 
@@ -725,10 +816,13 @@ def genesis_lock_round():
 def execute_round():
     """
     @notice Start the next round (n), lock the price for round (n-1), and end round (n-2).
-    @dev TODO: Callable only by the operator. Requires that genesis_start_once and
+    @dev Callable only by the operator. Requires that genesis_start_once and
          genesis_lock_once have been triggered before this can be executed.
     """
+    self._only_operator()
     self._not_proxy_contract()
+    self._when_not_paused()
+
     assert self.genesis_start_once and self.genesis_lock_once, "prediction: can only run after genesis_start_round and genesis_lock_round are triggered"
 
     current_round_id: uint80 = 0
@@ -763,3 +857,132 @@ def claim_treasury():
 
     extcall _ASSET.transfer(ow.owner, current_treasury_amount)
     log TreasuryClaim(current_treasury_amount)
+
+
+@external
+def set_buffer_and_interval_seconds(buffer_seconds: uint256, interval_seconds: uint256):
+    """
+    @notice Set buffer and interval (in seconds)
+    @param buffer_seconds The buffer duration in seconds
+    @param interval_seconds The interval duration in seconds
+    @dev Callable by owner when paused
+    """
+    ow._check_owner()
+    self._when_paused()
+    assert buffer_seconds < interval_seconds, "prediction: buffer_seconds must be less than interval_seconds"
+
+    self.buffer_seconds = buffer_seconds
+    self.interval_seconds = interval_seconds
+    log NewBufferAndIntervalInSeconds(buffer_seconds, interval_seconds)
+    
+
+@external
+def set_min_bet_amount(min_bet_amount: uint256):
+    """
+    @notice Set the minimum bet amount
+    @param min_bet_amount The minimum amount that can be bet
+    @dev Callable by owner when the contract is paused
+    """
+    ow._check_owner()
+    self._when_paused()
+    assert min_bet_amount != 0, "prediction: min_bet_amount must be greater than 0"
+    assert min_bet_amount >= MAX_MINIMUM_BET_AMOUNT, "prediction: minimum bet amount is too low"
+    
+    self.min_bet_amount = min_bet_amount
+    log NewMinBetAmount(self.current_epoch, min_bet_amount)
+
+
+@external
+def set_operator(operator: address):
+    """
+    @notice Set the operator address
+    @param operator The address of the new operator
+    @dev Callable by onwer
+    """
+    ow._check_owner()
+    assert operator != empty(address), "prediction: operator cannot be zero address"
+    self.operator = operator
+    log NewOperatorAddress(operator)
+
+
+@external
+def set_oracle_update_allowance(oracle_update_allowance: uint256):
+    """
+    @notice Set the oracle update allowance in seconds
+    @param oracle_update_allowance New allowance value for oracle updates
+    @dev Callable by owner when paused
+    """
+    ow._check_owner()
+
+    self.oracle_update_allowance = oracle_update_allowance
+    log NewOracleUpdateAllowance(oracle_update_allowance)
+
+
+@external
+def set_treasury_fee(treasury_fee: uint256):
+    """
+    @notice Set the treasury fee percentage
+    @param treasury_fee New treasury fee, must not exceed the max allowed
+    @dev Callable by owner when paused
+    """
+    ow._check_owner()
+    assert treasury_fee <= MAX_TREASURY_FEE, "prediction: Treasury fee too high"
+    
+    self.treasury_fee = treasury_fee
+    log NewTreasuryFee(self.current_epoch, treasury_fee)
+
+
+@nonreentrant
+@external
+def recover_token(token: address, amount: uint256):
+    """
+    @notice Allows the owner to recover tokens mistakenly sent to the contract
+    @param token The token address
+    @param amount The amount of tokens to recover
+    @dev Callable by owner
+    """
+    ow._check_owner()
+    assert token != _ASSET.address, "prediction: cannot be prediction token address"
+
+    extcall IERC20(token).transfer(msg.sender, amount)
+    log TokenRecovery(token, amount)
+
+
+@view
+@external
+def get_user_rounds(user: address, cursor: uint256, size: uint256) -> (DynArray[uint256, 1024], DynArray[BetInfo, 1024], uint256):
+    """
+    @notice Returns round epochs and bet information for a user that has participated
+    @param user The address of the user
+    @param cursor The cursor (starting point in the userRounds array)
+    @param size The number of rounds to retrieve
+    @return A tuple containing:
+        - A list of round epochs the user has participated in
+        - A list of bet information associated with the rounds
+        - The updated cursor after retrieving the requested rounds
+    """
+    length: uint256 = size
+
+    if length > self._user_rounds[user] - cursor:
+        length = self._user_rounds[user] - cursor
+
+    values: DynArray[uint256, 1024] = []
+    bet_info: DynArray[BetInfo, 1024] = []
+
+    for i: uint256 in range(length, bound=USER_ROUNDS_BOUND):
+        round_epoch: uint256 = self.user_rounds[user][cursor+i]
+        values.append(round_epoch)
+        bet_info.append(self.ledger[round_epoch][user])
+
+    return values, bet_info, (cursor+length)
+
+
+@view
+@external
+def get_user_rounds_length(user: address) -> uint256:
+    """
+    @notice Returns the number of rounds a user has participated in
+    @param user The address of the user
+    @return The length of the userRounds list for the user
+    """
+    return self._user_rounds[user]
