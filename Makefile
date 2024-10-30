@@ -1,4 +1,4 @@
-compile:; vyper ./contracts/*.vy
+compile:; vyper ./**/*.vy
 
 test:; pytest -v
 

@@ -1,6 +1,6 @@
 # pragma version ~=0.4.0
 """
-@title  Aggregator V3 Interface
+@title Aggregator V3 Interface
 @dev Interface for interacting with Chainlink's AggregatorV3,
      used for fetching price feed data.
 @author chainlink

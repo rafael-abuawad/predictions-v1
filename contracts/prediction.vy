@@ -1,4 +1,4 @@
- # pragma version ~=0.4.0
+# pragma version ~=0.4.0
 """
 @title `prediction-v1` binary prediction market 
 @custom:contract-name prediction-v1
